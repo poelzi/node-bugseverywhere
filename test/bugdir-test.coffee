@@ -166,7 +166,6 @@ batch = vows.describe("Bugdir interface").addBatch
 
     "test settings": (bdir) ->
         #console.log("bdir test", bdir)
-        console.log bdir.settings
         
         assert.equal(bdir.uuid, "bea86499-824e-4e77-b085-2d581fa9ccab")
         
@@ -198,7 +197,6 @@ batch = vows.describe("Bugdir interface").addBatch
                 callback = this.callback
                 all_bugs = []
                 for uuid in uuids
-                    console.log(uuid)
                     bdir.bug_from_uuid uuid, (err, bug) ->
                         all_bugs.push(bug)
                         if all_bugs.length == UIDS.length
@@ -207,7 +205,6 @@ batch = vows.describe("Bugdir interface").addBatch
                 return
 
             "test bug values": (err, bug, uuids, bdir) ->
-                console.log("test bug", err, bug, uuids, bdir)
                 assert.ok(bug.summary, "summary is empty")
                 assert.ok(Object.keys(bug.values).length >= 3, "not enougth values" + Object.keys(bug.values).length)
                 assert.ok(bug.creator)

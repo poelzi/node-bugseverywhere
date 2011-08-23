@@ -34,7 +34,6 @@ class FileStorage
 
     _read_uuids: (path, callback) =>
         fs.readdir path, (err, files) =>
-            console.log("read", err, files, path)
             callback(err, null) if err
             ids = files.filter (fn) -> return guid.isGuid(fn)
             callback(null, ids)
@@ -95,15 +94,12 @@ class Bug
         @comments = {}
 
     read: (callback) =>
-        console.log("read bug")
-        console.log(@bugdir)
         callback("no bugdir", @) unless @bugdir
         jobs = {}
         # add read jobs depending on settings
         if @uuid
             jobs.values = (callback) =>
                @bugdir.storage.read_bug @bugdir.uuid, @uuid, (err, values) =>
-                    console.log("read bug values", err, values)
                     @values = values
                     for k,v of values
                       @[k] = v
