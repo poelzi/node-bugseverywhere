@@ -1,0 +1,18 @@
+{ "name": "bugseverywhere"
+, "description": "access to bugseverywhere databases"
+, "version": "0.1.0"
+, "homepage": "https://github.com/poelzi/node-bugseverywhere"
+, "author": "poelzi (http://poelzi.org)"
+, "repository": {"type": "git", "url": "git://github.com/poelzi/node-bugseverywhere.git"}
+, "main": "bugseverywhere.js"
+, "engines": {"node": "0.4.x"}
+, "keywords": ["bugs", "tracker", "everywhere"]
+, "scripts": {
+    "preinstall": "#preinstall DO NOTHING",
+    "install": "node-waf configure build",
+    "update": "node-waf build"}
+, "dependencies": {
+    "libyaml": "*",
+    "coffee-script": ">= 1.1.1",
+    "async": "*"}
+}
