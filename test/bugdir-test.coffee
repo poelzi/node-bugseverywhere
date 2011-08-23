@@ -162,6 +162,7 @@ batch = vows.describe("Bugdir interface").addBatch
         bd = new be.Bugdir bs
         bd.read (err, instance) =>
             this.callback(err, instance)
+        return
 
     "test settings": (bdir) ->
         #console.log("bdir test", bdir)
@@ -182,14 +183,35 @@ batch = vows.describe("Bugdir interface").addBatch
             callback = this.callback
             bdir.list_uuids (err, uuids) ->
                 callback(err, uuids)
+            return
 
         "test all keys": (err, uuids, bdir) ->
+            test_uids = UIDS[0...UIDS.length]
             for uid in uuids
-                idx = UIDS.indexOf(uid)
+                idx = test_uids.indexOf(uid)
                 assert.ok(idx > -1, "bug not found in static list: " + uid)
-                UIDS.splice(idx, 1)
-            assert.equal(UIDS.length, 0, "not all uuids found")
+                test_uids.splice(idx, 1)
+            assert.equal(test_uids.length, 0, "not all uuids found")
 
+        "get bug":
+            topic: (uuids, bdir) ->
+                callback = this.callback
+                all_bugs = []
+                for uuid in uuids
+                    console.log(uuid)
+                    bdir.bug_from_uuid uuid, (err, bug) ->
+                        all_bugs.push(bug)
+                        if all_bugs.length == UIDS.length
+                            for b in all_bugs
+                                callback(err, b)
+                return
+
+            "test bug values": (err, bug, uuids, bdir) ->
+                console.log("test bug", err, bug, uuids, bdir)
+                assert.ok(bug.summary, "summary is empty")
+                assert.ok(Object.keys(bug.values).length >= 3, "not enougth values" + Object.keys(bug.values).length)
+                assert.ok(bug.creator)
+                assert.ok(bug.time)
 
 batch.export(module)
 
