@@ -10,7 +10,8 @@
 , "scripts": {
     "preinstall": "#preinstall DO NOTHING",
     "install": "node-waf configure build",
-    "update": "node-waf build"}
+    "update": "node-waf build",
+    "test": "node-waf && vows"}
 , "dependencies": {
     "libyaml": "*",
     "coffee-script": ">= 1.1.1",
