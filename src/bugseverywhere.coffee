@@ -3,22 +3,55 @@ fs = require 'fs'
 async = require 'async'
 path = require 'path'
 guid = require 'guid'
+assert = require 'assert'
 #eyes = require 'eyes'
 
 # list of supported bugseveryhere storage formats
 FORMATS = {
     "1.0":"Bugs Everywhere Tree 1 0"
-    # untested
+    # untested seems to be not used
     #"1.1":"Bugs Everywhere Directory v1.1",
     #"1.2":"Bugs Everywhere Directory v1.2",
     #"1.3":"Bugs Everywhere Directory v1.3",
     "1.4":"Bugs Everywhere Directory v1.4"
 }
 
+eyes = require('eyes')
+
+write_map = (map) ->
+    rv = []
+    keys = Object.keys(map).sort()
+    for key in keys
+        try
+            assert.notEqual(key[0], ">")
+            assert.equal(key.search('\n'), -1)
+            assert.equal(key.search('='), -1)
+            assert.equal(key.search(':'), -1)
+            assert.ok(key.length > 0)
+        catch e
+            throw new Error('invalid key: ' + key + e)
+        if '\n' in map[key]
+            throw new Error('invalid value (newline) in key' + key)
+        o = {}
+        o[key] = map[key]
+        raw = yaml.dump(o)
+        if raw.substr(1,4) == "---\n"
+            raw = raw.substr(5)
+        if raw.substr(-5) == "\n...\n"
+            raw = raw.substr(0, raw.length - 4)
+        rv.push(raw)
+        rv.push("")
+    return rv.join("\n")
+    
+
 
 class FileStorage
     constructor: (@path, @encoding='utf-8', @options=null) ->
+        @format = null
 
+
+    _write_file: (file, data, callback) =>
+        fs.writeFile(path.join(@path, file), data, callback)
 
     _read_file: (file, callback) =>
         fs.readFile path.join(@path, file), @encoding, (err, data) ->
@@ -35,12 +68,24 @@ class FileStorage
 
     # return storage version number
     read_version: (callback) =>
+        # return cached version
+        if @format
+            callback(null, @format)
         fs.readFile path.join(@path, "version"), "utf-8", (err, data) ->
-            return callback(err, data.trim()) if not err
-            callback(err, data)
+            callback(err, null) if err
+            data = data.trim()
+            for k,v of FORMATS
+                if v == data
+                    @format = k
+                    return callback(null, k)
+
+            callback("unsupported storage version", null)
 
     read_file: (uuid, file, callback) =>
         @._read_file path.join(uuid, file), callback
+
+    write_raw_file: (uuid, file, data, callback) =>
+        @._write_file path.join(uuid, file), data, callback
 
     read_bug: (uuid, bug, callback) =>
         @._read_file path.join(uuid, "bugs", bug, "values"), callback
@@ -60,10 +105,8 @@ class FileStorage
         #console.log(tpath)
         path.exists tpath, (exists) =>
             if not exists
-                console.log("not existing")
                 return callback(null, {})
             @._read_uuids tpath, (err, files) =>
-                console.log("rc", err, files)
                 callback(err, null) if err
                 if comments == null
                     comments = files
@@ -91,6 +134,8 @@ class FileStorage
 
     ## return top list of uuids
     list_top_uuids: (callback) =>
+        if @format == "1.0"
+            callback(null, "")
         @._read_uuids(@path, callback)
 
     ## return list of bug uuids
@@ -101,6 +146,7 @@ class FileStorage
 class Bugdir
     constructor: (@storage, @uuid=null, @from_storage=false) ->
         @format = null
+        @_cache = {}
    
     inspect: =>
         return "[Bugdir " + @uuid + "]"
@@ -110,13 +156,7 @@ class Bugdir
     read: (callback) =>
         async.auto {
             get_version: (callback) =>
-                @storage.read_version (err, version) =>
-                    console.log("got version", version)
-                    for k,v of FORMATS
-                        if v == version
-                            @format = k
-                            return callback(null, k)
-                    callback("unsupported storage version", null)
+                @storage.read_version callback
                     
                 
             get_uuid: ['get_version', (callback) =>
@@ -131,9 +171,19 @@ class Bugdir
             get_settings: ['get_uuid', (callback) =>
                 @storage.read_file @uuid, 'settings', (err, data) =>
                     @settings = data or {}
+                    console.log("READ:")
+                    console.log(data)
+                    console.log("##############")
+                    @extra_strings = data.extra_strings or []
                     @inactive_status = data.inactive_status or null
                     @active_status = data.active_status or null
+                    @severities = data.severities or null
+                    @target = data.target or null
                     callback(err, data)
+            ]
+            list_uuids: ['get_uuid', (callback) =>
+                mycb = callback
+                @list_uuids callback
             ]
         }, (err) =>
             console.log("error reading bugdir " + @storage.path + ":" + err)
@@ -141,7 +191,13 @@ class Bugdir
 
     ## returns list of all uuids
     list_uuids: (callback) =>
-        @storage.list_uuids(@uuid, callback)
+        if Object.keys(@_cache).length > 0
+            return callback(null, Object.keys(@_cache))
+        @storage.list_uuids @uuid, (err, lst) =>
+            callback(err, null) if err
+            for uid in lst
+                @_cache[uid] ?= null
+            callback(err, lst)
 
     # load bug from uuid
     # bug_from_uuid: (uuid, load_comments=false, callback)
@@ -153,6 +209,13 @@ class Bugdir
         rv = new Bug(@, uuid, load_comments)
         #console.log("bugdir", rv.bugdir)
         rv.read(callback)
+    has_bug: (uuid) =>
+        return @_cache[uuid] != undefined
+
+    save: (callback) =>
+        data = write_map(@settings)
+        @storage.write_raw_file(@uuid, "settings", data, callback)
+        console.log("########\n" + data + "\n#########")
 
 class Bug
     constructor: (@bugdir=null, @uuid=null, @_load_comments=false, @summary=null) ->
@@ -171,7 +234,6 @@ class Bug
                     @values = values
                     for k,v of values
                       @[k] = v
-
                     callback(err, values)
 
         if @uuid and @_load_comments
@@ -200,7 +262,7 @@ class Comment
         callback("no bug", @) if not @bug or not @uuid
         callback("no budir in bug", @) if not @bug.bugdir
         callback("no storage defined", @) if not @bug.bugdir.storage
-        console.log("call read on comment")
+        #console.log("call read on comment")
         #console.log(@bug, @bug.bugdir)
         async.parallel [
             (callback) =>

@@ -168,7 +168,9 @@ batch = vows.describe("Bugdir interface").addBatch
         #console.log("bdir test", bdir)
         
         assert.equal(bdir.uuid, "bea86499-824e-4e77-b085-2d581fa9ccab")
-        
+        assert.deepEqual(bdir.extra_strings, [
+             'SUBSCRIBE:W. Trevor King <wking@drexel.edu>\tall\t*'
+             ])
         assert.deepEqual(bdir.inactive_status, [
               [ 'closed', 'The bug is no longer relevant.' ],
               [ 'fixed', 'The bug should no longer occur.' ],
@@ -176,6 +178,15 @@ batch = vows.describe("Bugdir interface").addBatch
               [ 'disabled', 'Unknown meaning.  For backwards compatibility with old BE bugs.' ] ])
         assert.equal(bdir.active_status, null)
         assert.deepEqual(bdir.settings.extra_strings, [ "SUBSCRIBE:W. Trevor King <wking@drexel.edu>\tall\t*" ])
+        assert.equal(bdir.severities, null, "severities are non null")
+        assert.equal(bdir.target, null, "target should be null")
+
+    "test has_bug cache": (bdir) ->
+        for bug in UIDS
+            assert.ok(bdir.has_bug(bug), "bug " + bug + "is missing in cache")
+
+    "save bugdir": (bdir) ->
+        bdir.save()
 
     "test bug uuids":
         topic: (bdir) ->
