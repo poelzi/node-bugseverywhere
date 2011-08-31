@@ -197,18 +197,25 @@ batch = vows.describe("Bugdir interface").addBatch
                 callback = this.callback
                 all_bugs = []
                 for uuid in uuids
-                    bdir.bug_from_uuid uuid, (err, bug) ->
+                    bdir.bug_from_uuid uuid, true, (err, bug) ->
                         all_bugs.push(bug)
                         if all_bugs.length == UIDS.length
-                            for b in all_bugs
-                                callback(err, b)
+                             callback(null, all_bugs)
                 return
 
-            "test bug values": (err, bug, uuids, bdir) ->
-                assert.ok(bug.summary, "summary is empty")
-                assert.ok(Object.keys(bug.values).length >= 3, "not enougth values" + Object.keys(bug.values).length)
-                assert.ok(bug.creator)
-                assert.ok(bug.time)
+            "test bug values": (err, all_bugs, uuids, bdir) ->
+                total_comments = 0
+                comments_found = 0
+                assert.equal(all_bugs.length, 149, "not all bugs found")
+                for bug in all_bugs
+                    assert.ok(bug.uuid, "uuid missing")
+                    assert.ok(bug.summary, "summary is empty")
+                    assert.ok(Object.keys(bug.values).length >= 3, "not enougth values" + Object.keys(bug.values).length)
+                    #console.log(bug.comments)
+                    total_comments += Object.keys(bug.comments).length
+                    #assert.ok(bug.creator, "creator not set")
+                    #assert.ok(bug.time, "time not set")
+                assert.equal(total_comments, 250, "not enough comments found")
 
 batch.export(module)
 
