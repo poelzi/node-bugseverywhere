@@ -116,7 +116,7 @@ class FileStorage
                 rv = {}
                 queue = async.queue((commentid, qcallback) =>
                     #console.log("pre", bug)
-                    ccom = new Comment(bug, commentid)
+                    ccom = new Comment {bug, uuid:commentid}
                     ccom.read =>
                         # push result
                         rv[ccom.uuid] = ccom
@@ -144,9 +144,13 @@ class FileStorage
 
 
 class Bugdir
-    constructor: (@storage, @uuid=null, @from_storage=false) ->
-        @format = null
-        @_cache = {}
+    constructor: ({@storage, @uuid, @from_storage}) ->
+        @storage ?= null
+        @uuid    ?= null
+        @from_storage ?= false
+
+        @format  = null
+        @_cache  = {}
    
     inspect: =>
         return "[Bugdir " + @uuid + "]"
@@ -154,6 +158,7 @@ class Bugdir
         #fs.read(
     # read most important values
     read: (callback) =>
+        console.log(@uuid)
         async.auto {
             get_version: (callback) =>
                 @storage.read_version callback
@@ -164,16 +169,15 @@ class Bugdir
                     callback(null, @uuid)
                 else
                     @storage.list_top_uuids (err, ids) =>
+                        console.log(ids)
                         callback("empty directory", null) unless ids.length
                         @uuid = ids[0]
                         callback(null, @uuid)
             ]
             get_settings: ['get_uuid', (callback) =>
                 @storage.read_file @uuid, 'settings', (err, data) =>
-                    @settings = data or {}
-                    console.log("READ:")
-                    console.log(data)
-                    console.log("##############")
+                    data ?= {}
+                    @settings = data
                     @extra_strings = data.extra_strings or []
                     @inactive_status = data.inactive_status or null
                     @active_status = data.active_status or null
@@ -206,7 +210,7 @@ class Bugdir
         load_comments = args.pop() or false
         #console.log(uuid, load_comments, callback)
         #console.log("bla", callback)
-        rv = new Bug(@, uuid, load_comments)
+        rv = new Bug bugdir:@, uuid:uuid, load_comments:load_comments
         #console.log("bugdir", rv.bugdir)
         rv.read(callback)
     has_bug: (uuid) =>
@@ -218,7 +222,12 @@ class Bugdir
         console.log("########\n" + data + "\n#########")
 
 class Bug
-    constructor: (@bugdir=null, @uuid=null, @_load_comments=false, @summary=null) ->
+    constructor: ({@bugdir, @uuid, load_comments, @summary}) ->
+        @bugdir ?= null
+        @uuid ?= null
+        @_load_comments = load_comments or false
+        @summary ?= false
+
         @comments = {}
 
     inspect: () =>
@@ -248,14 +257,39 @@ class Bug
         async.parallel jobs, (err, res) =>
             mycallback(err, @)
 
+    ###
+    # read_comments(callback)
+
+    Read all comments for Bug and adds them to the bug comments list
+    ###
     read_comments: (callback) =>
         if @uuid and @_load_comments
             jobs.comments = (callback) =>
                 @bugdir.storage.read_comments @bugdir.uuid, @uuid, null, (err, comments) =>
                     @comments = comments
                     callback(err, comments)
+
+    ###
+    # new_comment()
+
+    Return a new Comment attached to this Bug
+    ###
+    new_comment: (body)=>
+        return new Comment bug:this, body:body
+
+###
+# Comment
+
+Represents a single Comment. It is in relation to a Bug and may be a replay to another Comment.
+###
 class Comment
-    constructor: (@bug=null, @uuid=null, @from_storage=false, @in_reply_to=null, @body=null, @content_type=null) ->
+    constructor: ({@bug, @uuid, @from_storage, @in_reply_to, @body, @content_type}) ->
+        @bug ?= null
+        @uuid ?= guid.raw()
+        @from_storage ?= false
+        @in_reply_to ?= null
+        @body ?= null
+        @content_type = null
 
     read: (callback) =>
         #eyes.inspect(@bug, "bla", @bug.bugdir)
@@ -281,8 +315,10 @@ class Comment
 
 
 module.exports = {
-    FileStorage: FileStorage
-    Bugdir: Bugdir
+    FileStorage,
+    Bugdir,
+    Bug,
+    Comment
 }
 
 

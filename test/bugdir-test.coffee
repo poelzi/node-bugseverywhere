@@ -156,10 +156,10 @@ UIDS = ['77399855-6300-41a8-91a3-decbb915a3ff',
 
 
 batch = vows.describe("Bugdir interface").addBatch
-  "":
+  "version 1.4":
     topic: () ->
         bs = new be.FileStorage('test/sampledata/.be')
-        bd = new be.Bugdir bs
+        bd = new be.Bugdir storage:bs
         bd.read (err, instance) =>
             this.callback(err, instance)
         return
@@ -220,13 +220,23 @@ batch = vows.describe("Bugdir interface").addBatch
                 assert.equal(all_bugs.length, 149, "not all bugs found")
                 for bug in all_bugs
                     assert.ok(bug.uuid, "uuid missing")
+                    assert.ok(bug instanceof be.Bug, "not a bug instance")
                     assert.ok(bug.summary, "summary is empty")
                     assert.ok(Object.keys(bug.values).length >= 3, "not enougth values" + Object.keys(bug.values).length)
                     #console.log(bug.comments)
                     total_comments += Object.keys(bug.comments).length
                     #assert.ok(bug.creator, "creator not set")
                     #assert.ok(bug.time, "time not set")
-                assert.equal(total_comments, 250, "not enough comments found")
+                assert.equal(total_comments, 250, "not enough comments found " + total_comments + "!=250")
+
+
+            "new_comment": (err, all_bugs, uuids, bdir) ->
+                bug = all_bugs[0]
+                nc = bug.new_comment("test body")
+                assert.equal(nc.body, "test body", "body does not match")
+                assert.ok(nc.uuid, "uuid is empty")
+                assert.ok(nc instanceof be.Comment)
+
 
 batch.export(module)
 
