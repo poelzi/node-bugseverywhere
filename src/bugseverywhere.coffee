@@ -52,46 +52,68 @@ write_map = (map, newlines=1) ->
 ###
 
 
-###
-# truncate uuid to minimum unique length
 
-searches for the uuids in others to generate the shortest
-unique name
-###
 
 truncate_uuid = (uid, others, min_length=3) ->
+    ###
+    **truncate uuid to minimum unique length**
+
+    searches for the uuids in others to generate the shortest
+    unique name
+    ###
     chars = min_length
     for other in others
         if uid == other
             continue
-        i = 1
+        i = 0
         while other[i] == uid[i]
             i++
+        # if any other exists, one char is required
+        i = i or 1
         chars = i > chars and i or chars
     return uid.substr(0, chars)
 
 
-
-###
-# UUID encapsulation
-
-Represents a UUID that can be stipped 
-###
-
-
 class UUID
+    ###
+    UUID encapsulation
+    Represents a UUID that can be stipped 
+    ###
+
+    constructor: (@holder, @id) ->
+        @_short = null
+
+    inspect: ->
+        return "<UUID " + @id + ">"
+
+    short: () ->
+        return @_short if @_short
+        # calcualte the shortest path if parents have uuids
+        uuids = @_parent_uuids()
+        if not uuids
+            return @id
+        truncate_uuid(@id, uuids)
+
+    _parent_uuids: () ->
+        if @holder instanceof Comment
+            return Object.keys(@holder.bug.comments)
+        if @holder instanceof Bug and @holder.bugdir
+            return Object.keys(@holder.bugdir._cache)
+        if @holder instanceof Bugdir and @holder.storage
+            return 
+        return null
 
 
-    
 
-###
-# Storage Class
-
-Used to load/save/query (low level) the bug database
-###
 class FileStorage
+    ###
+    Storage Class
+
+    Used to load/save/query (low level) the bug database
+    ###
     constructor: (@path, @encoding='utf-8', @options=null) ->
         @format = null
+        @top_uuids = []
 
 
     _write_file: (file, data, callback) =>
@@ -164,10 +186,10 @@ class FileStorage
 
 
 
-    ###
-    # save comment to database
-    ###
     save_comment: (comment, callback) =>
+        ###
+        save comment to database
+        ###
         bd = comment.bug.bugdir
         values = write_map(comment.to_map(), bd._format_newlines)
         body = comment.body
@@ -205,8 +227,10 @@ class FileStorage
             callback(err, res)
 
 
-    # mass read comments
     read_comments: (uuid, bug, comments, callback) =>
+        ###
+        mass read comments from storage
+        ###
         # FIXME
         #console.log("read comments", uuid, bug, comments)
         tpath = path.join(@path, uuid, "bugs", bug.uuid, "comments")
@@ -243,9 +267,15 @@ class FileStorage
 
     ## return top list of uuids
     list_top_uuids: (callback) =>
+        console.log("uiae", @top_uuids)
+        if @top_uuids and @top_uuids.length
+            return callback(null, @top_uuids)
         if @format == "1.0"
             callback(null, "")
-        @._read_uuids(@path, callback)
+        @._read_uuids @path, (err, ids) =>
+            callback(err, null) if err
+            @top_uuids = ids
+            callback(err, ids)
 
     ## return list of bug uuids
     list_uuids: (uuid, callback) =>
@@ -253,6 +283,13 @@ class FileStorage
 
 
 class Bugdir
+    ###
+    Represents a Top bugseverywhere directory. It manages all the Bugs
+    in the repository.
+
+    If you have more then one Bugdir repository in one .be directory, 
+    uuid must be set.
+    ###
     constructor: ({@storage, @uuid, @from_storage}) ->
         @storage ?= null
         @uuid    ?= null
@@ -277,6 +314,8 @@ class Bugdir
                     callback(null, @uuid)
                 else
                     @storage.list_top_uuids (err, ids) =>
+
+                        console.log("ver")
                         callback("empty directory", null) unless ids.length
                         @uuid = ids[0]
                         callback(null, @uuid)
@@ -305,6 +344,7 @@ class Bugdir
         if Object.keys(@_cache).length > 0
             return callback(null, Object.keys(@_cache))
         @storage.list_uuids @uuid, (err, lst) =>
+            console.log("list uuids")
             callback(err, null) if err
             for uid in lst
                 @_cache[uid] ?= null
@@ -330,6 +370,9 @@ class Bugdir
 
 
 class Bug
+    ###
+    Represents a single bug. It manages all comments of the bug
+    ###
     constructor: ({@bugdir, @uuid, load_comments, @summary}) ->
         @bugdir ?= null
         @uuid ?= null
@@ -342,6 +385,9 @@ class Bug
         return "<Bug " + @uuid + ">"
 
     read: (callback) =>
+        ###
+        read the data from the storage backend and call callback(err, list_of_comment_objects) when done
+        ###
         callback("no bugdir", @) unless @bugdir
         jobs = {}
         # add read jobs depending on settings
@@ -365,12 +411,13 @@ class Bug
         async.parallel jobs, (err, res) =>
             mycallback(err, @)
 
-    ###
-    # read_comments(callback)
 
-    Read all comments for Bug and adds them to the bug comments list
-    ###
     read_comments: (callback) =>
+        ###
+        read_comments(callback)
+
+        Read all comments for Bug and adds them to the bug comments list
+        ###
         if @uuid and @bugdir and @bugdir.storage
             @bugdir.storage.read_comments @bugdir.uuid, @, null, (err, comments) =>
                 @comments = comments
@@ -378,12 +425,13 @@ class Bug
         else
             callback("no storage or uuid", null)
 
-    ###
-    # new_comment()
 
-    Return a new Comment attached to this Bug
-    ###
     new_comment: (body)=>
+        ###
+        new_comment()
+
+        Return a new Comment attached to this Bug
+        ###
         return new Comment bug:this, body:body, date:new Date()
 
 
@@ -410,13 +458,14 @@ class Bug
         for id, comment of @comments
             comment.children.sort srt
 
-###
-# Comment
 
-Represents a single Comment. It is in relation to a Bug and may be a replay to another Comment.
-###
 
 class Comment
+    ###
+    Comment
+
+    Represents a single Comment. It is in relation to a Bug and may be a replay to another Comment.
+    ###
     MAP = {
         author:"Author",
         alt_id:"Alt-id",
@@ -472,34 +521,35 @@ class Comment
             callback(err, @)
         return
 
-    ###
-    # save (callback)
-
-    callback(err, instance)
-    saves the comment on storage if possible
-    ###
     save: (callback) =>
+        ###
+        save (callback)
+
+        callback(err, instance)
+        saves the comment on storage if possible
+        ###
         if not @._test_storage(callback)
             return
         @bug.bugdir.storage.save_comment(this, callback)
 
-    ###
-    # remove comment
 
-    removes comment from bug
-    ###
     remove: (callback) =>
+        ###
+        remove comment
+
+        removes comment from bug
+        ###
         if not @._test_storage(callback)
             return
         @bug.bugdir.storage.remove_comment(this, callback or () ->)
 
 
-    ###
-    # new_reply
-
-    returns a new comment instance as reply to the current
-    ###
     new_reply: (body, content_type) =>
+        ###
+        new_reply
+
+        returns a new comment instance as reply to the current
+        ###
         rv = new Comment bug:@bug, body:body, date:new Date()
         rv.content_type = content_type ? rv.content_type
         rv.in_reply_to = @uuid
@@ -508,12 +558,11 @@ class Comment
         @children.push(rv)
         rv
     
-    ###
-    # to map
 
-    return a serializable object for write_map. no body
-    ###
     to_map: =>
+        ###
+        return a serializable object for write_map. no body
+        ###
         rv = {}
         for key,target of MAP
             if @[key] != undefined
@@ -526,17 +575,20 @@ class Comment
         return rv
 
     set_values: (values) =>
+        ###
+        sets values as read from the database
+        ###
         for key, value of values
             nkey = key.replace(/-/g,"_", -1).toLowerCase()
             @[nkey] = value
         @update()
 
-    ###
-    # update internal states
-
-    should be called after setting of variables
-    ###
     update: () =>
+        ###
+        update internal states
+
+        should be called after setting of variables
+        ###
         @_date_sort = new Date(@date).getTime()
 
 module.exports = {

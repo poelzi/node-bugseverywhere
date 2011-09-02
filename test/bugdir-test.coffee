@@ -182,6 +182,7 @@ batch = vows.describe("Bugdir interface").addBatch
         bs = new be.FileStorage(full)
         bd = new be.Bugdir storage:bs
         bd.read (err, instance) =>
+            console.log("jojo")
             this.callback(err, instance)
         return
 
