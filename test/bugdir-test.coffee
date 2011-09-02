@@ -305,6 +305,24 @@ batch = vows.describe("Bugdir interface").addBatch
                 assert.equal(nc.in_reply_to, "1f40efc1-6efc-4dd8-bdd2-97907e5aa624")
                 assert.equal(nc.parent.uuid, comment.uuid)
                 assert.ok(nc in comment.children, "new reply not in children list")
+                console.log(comment.id)
+                console.log(comment.id.short())
+                assert.equal(comment.id.short(), "1f4")
+                assert.deepEqual comment.id.path(), [
+                    'bea86499-824e-4e77-b085-2d581fa9ccab',
+                    '529c290e-b1cf-4800-be7e-68f1ecb9565c',
+                    '1f40efc1-6efc-4dd8-bdd2-97907e5aa624' ]
+                assert.deepEqual comment.id.path("/"),
+                    'bea86499-824e-4e77-b085-2d581fa9ccab/529c290e-b1cf-4800-be7e-68f1ecb9565c/1f40efc1-6efc-4dd8-bdd2-97907e5aa624'
+                assert.deepEqual comment.bug.id.path("/"), 'bea86499-824e-4e77-b085-2d581fa9ccab/529c290e-b1cf-4800-be7e-68f1ecb9565c'
+                assert.deepEqual comment.bug.bugdir.id.path("/"), 'bea86499-824e-4e77-b085-2d581fa9ccab'
+                
+                assert.deepEqual comment.id.short_path(), [
+                    'bea', '529', '1f4' ]
+                assert.deepEqual comment.id.short_path("/"), 'bea/529/1f4'
+                assert.deepEqual comment.bug.id.short_path("/"), 'bea/529'
+                assert.deepEqual comment.bug.bugdir.id.short_path("/"), 'bea'
+                
 
 
 

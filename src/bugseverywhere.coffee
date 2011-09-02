@@ -80,29 +80,63 @@ class UUID
     Represents a UUID that can be stipped 
     ###
 
-    constructor: (@holder, @id) ->
+    constructor: (@holder) ->
         @_short = null
 
     inspect: ->
-        return "<UUID " + @id + ">"
+        return "<UUID " + @holder.uuid + ">"
 
     short: () ->
         return @_short if @_short
         # calcualte the shortest path if parents have uuids
+        id = @holder.uuid
         uuids = @_parent_uuids()
         if not uuids
-            return @id
-        truncate_uuid(@id, uuids)
+            return id
+        truncate_uuid(id, uuids)
 
     _parent_uuids: () ->
         if @holder instanceof Comment
             return Object.keys(@holder.bug.comments)
         if @holder instanceof Bug and @holder.bugdir
             return Object.keys(@holder.bugdir._cache)
-        if @holder instanceof Bugdir and @holder.storage
-            return 
+        if @holder instanceof Bugdir and @holder.storage and @holder.storage.top_uuids.length
+            return @holder.storage.top_uuids
         return null
 
+    _get_parent: (obj) ->
+        if obj instanceof Comment and obj.bug
+            return obj.bug
+        if obj instanceof Bug and obj.bugdir
+            return obj.bugdir
+        if obj instanceof Bugdir and obj.storage
+            return obj.storage
+        return null
+
+    toString: () ->
+        return @holder.uuid
+
+    long: () ->
+        return @holder.uuid
+
+    path: (join) ->
+        rv = @_build_path(false)
+        return rv.join(join) if join
+        rv
+
+    short_path: (join) =>
+        rv = @_build_path(true)
+        return rv.join(join) if join
+        rv
+
+    _build_path: (short) =>
+        cur = @holder
+        chunks = []
+        while cur and cur.id
+            chunks = [short and cur.id.short() or cur.id.long()].concat(chunks)
+            cur = @_get_parent(cur)
+        return chunks
+            
 
 
 class FileStorage
@@ -295,6 +329,7 @@ class Bugdir
         @uuid    ?= null
         @from_storage ?= false
 
+        @id = new UUID(this)
         @format  = null
         @_cache  = {}
    
@@ -379,6 +414,7 @@ class Bug
         @_load_comments = load_comments or false
         @summary ?= false
 
+        @id = new UUID(this)
         @comments = {}
 
     inspect: () =>
@@ -488,6 +524,7 @@ class Comment
         @children = []
         @parent = null
         @update()
+        @id = new UUID(this)
 
     _test_storage: (callback) =>
         if not @bug or not @uuid
@@ -565,7 +602,7 @@ class Comment
         ###
         rv = {}
         for key,target of MAP
-            if @[key] != undefined
+            if @[key] != undefined and @[key] != null
                 rv[target] = @[key]
         if @date != undefined
             if @date instanceof Date
