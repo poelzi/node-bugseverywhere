@@ -11,9 +11,14 @@
     "preinstall": "#preinstall DO NOTHING",
     "install": "node-waf configure build",
     "update": "node-waf build",
-    "test": "node-waf && vows"}
+    "test": "node-waf && vows --spec"}
 , "dependencies": {
     "libyaml": "*",
     "coffee-script": ">= 1.1.1",
-    "async": "*"}
+    "async": "0.1.x",
+    "guid": "0.0.x",
+    "mkdirp": "0.0.x",
+    "vows": "https://github.com/poelzi/vows/tarball/master"
+}
+
 }

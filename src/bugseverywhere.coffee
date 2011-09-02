@@ -4,6 +4,7 @@ async = require 'async'
 path = require 'path'
 guid = require 'guid'
 assert = require 'assert'
+mkdirp = require 'mkdirp'
 #eyes = require 'eyes'
 
 # list of supported bugseveryhere storage formats
@@ -18,7 +19,7 @@ FORMATS = {
 
 eyes = require('eyes')
 
-write_map = (map) ->
+write_map = (map, newlines=1) ->
     rv = []
     keys = Object.keys(map).sort()
     for key in keys
@@ -36,65 +37,136 @@ write_map = (map) ->
         o[key] = map[key]
         raw = yaml.dump(o)
         if raw.substr(1,4) == "---\n"
+            #remove beginning garbage
             raw = raw.substr(5)
         if raw.substr(-5) == "\n...\n"
+            # remove '...\n'
             raw = raw.substr(0, raw.length - 4)
         rv.push(raw)
-        rv.push("")
+        for i in [1..newlines]
+            rv.push("")
     return rv.join("\n")
     
+###
+# Storage Class
 
-
+Used to load/save/query (low level) the bug database
+###
 class FileStorage
     constructor: (@path, @encoding='utf-8', @options=null) ->
         @format = null
 
 
     _write_file: (file, data, callback) =>
-        fs.writeFile(path.join(@path, file), data, callback)
+        #console.log("write file", file)
+        fs.writeFile path.join(@path, file), data, callback #(err) ->
+            #console.log("write res", err)
+            #xcallback(err)
 
-    _read_file: (file, callback) =>
-        fs.readFile path.join(@path, file), @encoding, (err, data) ->
-            callback(err, null) if err
-            callback("Empty file", null) if not data
+    _read_yaml_file: (file, callback) =>
+        fs.readFile path.join(@path, file), @encoding, (err, data) =>
+            return callback(err, null) if err
+            return callback("Empty file", null) if not data
+#            console.log("data", data, "#", path.join(@path, file), err)
             callback(null, yaml.load(data)[0])
         return
+
+    _read_file: (file, callback) =>
+        fs.readFile path.join(@path, file), @encoding, callback
     
     _read_uuids: (path, callback) =>
         fs.readdir path, (err, files) =>
             callback(err, null) if err
             ids = files.filter (fn) -> return guid.isGuid(fn)
             callback(null, ids)
+    _mkdir: (base, callback) =>
+        mkdirp path.join(@path, base), 0755, callback
+
+    _remove_file: (file, callback) =>
+        fs.unlink path.join(@path, file), callback
+
+    _remove_directory: (dir, callback) =>
+        fs.rmdir path.join(@path, dir), callback
 
     # return storage version number
     read_version: (callback) =>
         # return cached version
         if @format
             callback(null, @format)
-        fs.readFile path.join(@path, "version"), "utf-8", (err, data) ->
+        @._read_file "version", (err, data) =>
             callback(err, null) if err
             data = data.trim()
             for k,v of FORMATS
                 if v == data
-                    @format = k
+                    @set_format k
                     return callback(null, k)
 
             callback("unsupported storage version", null)
 
+    set_format: (format) =>
+        @format = format
+        @_format_newlines = 1
+        switch format
+            when "1.0"
+                @_format_newlines = 2
+
     read_file: (uuid, file, callback) =>
-        @._read_file path.join(uuid, file), callback
+        @._read_yaml_file path.join(uuid, file), callback
 
     write_raw_file: (uuid, file, data, callback) =>
         @._write_file path.join(uuid, file), data, callback
 
     read_bug: (uuid, bug, callback) =>
-        @._read_file path.join(uuid, "bugs", bug, "values"), callback
+        @._read_yaml_file path.join(uuid, "bugs", bug, "values"), callback
 
     read_comment_values: (uuid, bug, comment, callback) =>
-        @._read_file path.join(uuid, "bugs", bug, "comments", comment, "values"), callback
+        @._read_yaml_file path.join(uuid, "bugs", bug, "comments", comment, "values"), callback
 
     read_comment_body: (uuid, bug, comment, callback) =>
-        fs.readFile path.join(@path, uuid, "bugs", bug, "comments", comment, "body"), @encoding, callback
+        @._read_file path.join(uuid, "bugs", bug, "comments", comment, "body"), callback
+
+
+
+    ###
+    # save comment to database
+    ###
+    save_comment: (comment, callback) =>
+        bd = comment.bug.bugdir
+        values = write_map(comment.to_map(), bd._format_newlines)
+        body = comment.body
+        @._save_comment_files(comment, values, body, callback)
+
+    _save_comment_files: (comment, values, body, final_callback) =>
+        base = path.join(comment.bug.bugdir.uuid, "bugs", comment.bug.uuid, "comments", comment.uuid)
+        @_mkdir base, (err) =>
+            if err
+                console.log("err saving comment", err)
+                final_callback(err)
+            async.parallel [
+                (callback) =>
+                    @_write_file path.join(base, "values"), values, (err, values) ->
+                        callback(err)
+                ,
+                (callback) =>
+                    @_write_file path.join(base, "body"), body, (err, values) ->
+                        callback(err)
+            ], (err, results) =>
+                final_callback(err, this)
+    ###
+    # remove comment
+    ###
+    remove_comment: (comment, callback) =>
+        base = path.join(comment.bug.bugdir.uuid, "bugs", comment.bug.uuid, "comments", comment.uuid)
+        async.auto
+            body: (callback) => @_remove_file path.join(base, "body"), callback
+            values: (callback) => @_remove_file path.join(base, "values"), callback
+            rmdir: ["body", "values",
+                (callback) => @_remove_directory base, (err, bla) ->
+                    callback(err)
+            ]
+        , (err, res) =>
+            callback(err, res)
+
 
     # mass read comments
     read_comments: (uuid, bug, comments, callback) =>
@@ -107,13 +179,14 @@ class FileStorage
             if not exists
                 return callback(null, {})
             @._read_uuids tpath, (err, files) =>
-                callback(err, null) if err
+                callback(err, {}) if err or files.length == 0
                 if comments == null
                     comments = files
                 else
                     # filter non existing comments from list
                     comments = comments.filter (comment) -> return comment in files
                 rv = {}
+                # use a job queue to load balance
                 queue = async.queue((commentid, qcallback) =>
                     #console.log("pre", bug)
                     ccom = new Comment {bug, uuid:commentid}
@@ -158,7 +231,6 @@ class Bugdir
         #fs.read(
     # read most important values
     read: (callback) =>
-        console.log(@uuid)
         async.auto {
             get_version: (callback) =>
                 @storage.read_version callback
@@ -169,7 +241,6 @@ class Bugdir
                     callback(null, @uuid)
                 else
                     @storage.list_top_uuids (err, ids) =>
-                        console.log(ids)
                         callback("empty directory", null) unless ids.length
                         @uuid = ids[0]
                         callback(null, @uuid)
@@ -217,9 +288,10 @@ class Bugdir
         return @_cache[uuid] != undefined
 
     save: (callback) =>
-        data = write_map(@settings)
+        data = write_map(@settings, @_format_newlines)
         @storage.write_raw_file(@uuid, "settings", data, callback)
         console.log("########\n" + data + "\n#########")
+
 
 class Bug
     constructor: ({@bugdir, @uuid, load_comments, @summary}) ->
@@ -263,11 +335,12 @@ class Bug
     Read all comments for Bug and adds them to the bug comments list
     ###
     read_comments: (callback) =>
-        if @uuid and @_load_comments
-            jobs.comments = (callback) =>
-                @bugdir.storage.read_comments @bugdir.uuid, @uuid, null, (err, comments) =>
-                    @comments = comments
-                    callback(err, comments)
+        if @uuid and @bugdir and @bugdir.storage
+            @bugdir.storage.read_comments @bugdir.uuid, @uuid, null, (err, comments) =>
+                @comments = comments
+                callback(err, comments)
+        else
+            callback("no storage or uuid", null)
 
     ###
     # new_comment()
@@ -275,27 +348,47 @@ class Bug
     Return a new Comment attached to this Bug
     ###
     new_comment: (body)=>
-        return new Comment bug:this, body:body
+        return new Comment bug:this, body:body, date:new Date()
 
 ###
 # Comment
 
 Represents a single Comment. It is in relation to a Bug and may be a replay to another Comment.
 ###
+
 class Comment
-    constructor: ({@bug, @uuid, @from_storage, @in_reply_to, @body, @content_type}) ->
+    MAP = {
+        author:"Author",
+        alt_id:"Alt-id",
+        content_type:"Content-type"
+        extra_strings:"Extra-strings"
+    }
+
+
+    constructor: ({@bug, @uuid, @from_storage, @in_reply_to, @body, @content_type, @date, @author}) ->
         @bug ?= null
         @uuid ?= guid.raw()
         @from_storage ?= false
         @in_reply_to ?= null
         @body ?= null
-        @content_type = null
+        @content_type ?= "text/plain"
+        @date ?= new Date()
 
+    _test_storage: (callback) =>
+        if not @bug or not @uuid
+            callback("no bug", @)
+            return false
+        if not @bug.bugdir
+            callback("no budir in bug", @)
+            return false
+        if not @bug.bugdir.storage
+            callback("no storage defined", @)
+            return false
+        return true
     read: (callback) =>
         #eyes.inspect(@bug, "bla", @bug.bugdir)
-        callback("no bug", @) if not @bug or not @uuid
-        callback("no budir in bug", @) if not @bug.bugdir
-        callback("no storage defined", @) if not @bug.bugdir.storage
+        if not @._test_storage(callback)
+            return
         #console.log("call read on comment")
         #console.log(@bug, @bug.bugdir)
         async.parallel [
@@ -312,6 +405,43 @@ class Comment
             callback(err, @)
         return
 
+    ###
+    # save (callback)
+
+    callback(err, instance)
+    saves the comment on storage if possible
+    ###
+    save: (callback) =>
+        if not @._test_storage(callback)
+            return
+        @bug.bugdir.storage.save_comment(this, callback)
+
+    ###
+    # remove comment
+
+    removes comment from bug
+    ###
+    remove: (callback) =>
+        if not @._test_storage(callback)
+            return
+        @bug.bugdir.storage.remove_comment(this, callback or () ->)
+
+    ###
+    # to map
+
+    return a serializable object for write_map. no body
+    ###
+    to_map: =>
+        rv = {}
+        for key,target of MAP
+            if @[key] != undefined
+                rv[target] = @[key]
+        if @date != undefined
+            if @date instanceof Date
+                rv.Date = @date.toUTCString()
+            else
+                rv.Date = @date
+        return rv
 
 
 module.exports = {

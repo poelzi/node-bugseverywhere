@@ -1,6 +1,8 @@
 vows = require 'vows'
 assert = require 'assert'
 be = require '../bugseverywhere'
+path = require 'path'
+fs = require 'fs'
 
 
 # all uuids from sample directory
@@ -154,11 +156,21 @@ UIDS = ['77399855-6300-41a8-91a3-decbb915a3ff',
  'f51dc5a7-37b7-4ce1-859a-b7cb58be6494',
  '764b812f-a0bb-4f4d-8e2f-c255c9474a0e']
 
+TEST_COMMENT_BODY = \
+"""
+I'm a " test body.
+ 
+.
+
+
+"""
+
 
 batch = vows.describe("Bugdir interface").addBatch
   "version 1.4":
     topic: () ->
-        bs = new be.FileStorage('test/sampledata/.be')
+        full = path.resolve 'test/sampledata/.be'
+        bs = new be.FileStorage(full)
         bd = new be.Bugdir storage:bs
         bd.read (err, instance) =>
             this.callback(err, instance)
@@ -210,7 +222,7 @@ batch = vows.describe("Bugdir interface").addBatch
                 for uuid in uuids
                     bdir.bug_from_uuid uuid, true, (err, bug) ->
                         all_bugs.push(bug)
-                        if all_bugs.length == UIDS.length
+                        if all_bugs.length >= UIDS.length
                              callback(null, all_bugs)
                 return
 
@@ -220,7 +232,7 @@ batch = vows.describe("Bugdir interface").addBatch
                 assert.equal(all_bugs.length, 149, "not all bugs found")
                 for bug in all_bugs
                     assert.ok(bug.uuid, "uuid missing")
-                    assert.ok(bug instanceof be.Bug, "not a bug instance")
+                    assert.instanceOf(bug, be.Bug)
                     assert.ok(bug.summary, "summary is empty")
                     assert.ok(Object.keys(bug.values).length >= 3, "not enougth values" + Object.keys(bug.values).length)
                     #console.log(bug.comments)
@@ -230,12 +242,46 @@ batch = vows.describe("Bugdir interface").addBatch
                 assert.equal(total_comments, 250, "not enough comments found " + total_comments + "!=250")
 
 
-            "new_comment": (err, all_bugs, uuids, bdir) ->
-                bug = all_bugs[0]
-                nc = bug.new_comment("test body")
-                assert.equal(nc.body, "test body", "body does not match")
-                assert.ok(nc.uuid, "uuid is empty")
-                assert.ok(nc instanceof be.Comment)
+            "new_comment":
+                topic: (all_bugs, uuids, bdir) ->
+                    bug = all_bugs[0]
+                    nc = bug.new_comment(TEST_COMMENT_BODY)
+                    assert.equal(nc.body, TEST_COMMENT_BODY, "body does not match")
+                    assert.ok(nc.uuid, "uuid is empty")
+                    assert.instanceOf(nc, be.Comment)
+                    callback = this.callback
+                    nc.save (err) ->
+                        console.log("nc save", err)
+                        callback(err, nc, bug)
+                    return
+                
+                "check if saved": (err, nc, bug, xx, xy) ->
+                    base = path.join(bug.bugdir.storage.path, bug.bugdir.uuid, "bugs", bug.uuid, "comments", nc.uuid)
+                    assert.ok(path.existsSync(path.join(base, "values")), "comment values file does not exist:" + base)
+                    assert.ok(path.existsSync(path.join(base, "body")), "comment body file does not exist:" + base)
+                    console.log(fs.readFileSync(path.join(base, "values"), "utf-8"))
+                    assert.ok(nc.date, "date not true")
+                    body = fs.readFileSync(path.join(base, "body"))
+                    assert.equal(body, TEST_COMMENT_BODY, "body not equal")
+
+                teardown: (nc, bug) ->
+                   callback = this.callback
+                   nc.remove (err, res) ->
+                       callback()
+                   return
+                    
+###                    topic: (bug, nc) ->
+                        base = path.join(bug.bugdir.storage.path, bug.bugdir.uuid, "bugs", bug.uuid, "comments", nc.uuid)
+                        assert.ok(path.existsSync(path.join(base, "values")), "comment values file does not exist:" + base)
+                        assert.ok(path.existsSync(path.join(base, "body")), "comment body file does not exist:" + base)
+                        body = fs.readFileSync(path.join(base, "body"))
+                        assert.equal(body, TEST_COMMENT_BODY, "body not equal")
+
+
+                    "x": () ->
+
+###
+
 
 
 batch.export(module)
