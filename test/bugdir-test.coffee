@@ -288,17 +288,13 @@ batch = vows.describe("Bugdir interface").addBatch
                 for comment in bug.comment_root
                     assert.ok(last_date <= comment._date_sort, "last _date_sort is not smaller" + last_date + " " + comment._date_sort)
                     last_date = comment._date_sort
-###                    topic: (bug, nc) ->
-                        base = path.join(bug.bugdir.storage.path, bug.bugdir.uuid, "bugs", bug.uuid, "comments", nc.uuid)
-                        assert.ok(path.existsSync(path.join(base, "values")), "comment values file does not exist:" + base)
-                        assert.ok(path.existsSync(path.join(base, "body")), "comment body file does not exist:" + base)
-                        body = fs.readFileSync(path.join(base, "body"))
-                        assert.equal(body, TEST_COMMENT_BODY, "body not equal")
 
-
-                    "x": () ->
-
-###
+            "reply comment": (err, bug) ->
+                comment = bug.comments["1f40efc1-6efc-4dd8-bdd2-97907e5aa624"]
+                nc = comment.new_reply("some body")
+                assert.equal(nc.in_reply_to, "1f40efc1-6efc-4dd8-bdd2-97907e5aa624")
+                assert.equal(nc.parent.uuid, comment.uuid)
+                assert.ok(nc in comment.children, "new reply not in children list")
 
 
 

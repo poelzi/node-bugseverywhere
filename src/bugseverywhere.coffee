@@ -361,6 +361,7 @@ class Bug
                     root.push(comment)
                 else
                     target.children.push(comment)
+                    comment.parent = target
             else
                 root.push(comment)
         #console.log("updated tree", root)
@@ -399,6 +400,7 @@ class Comment
         # loaded from storage
         @values = {}
         @children = []
+        @parent = null
         @update()
 
     _test_storage: (callback) =>
@@ -454,6 +456,21 @@ class Comment
             return
         @bug.bugdir.storage.remove_comment(this, callback or () ->)
 
+
+    ###
+    # new_reply
+
+    returns a new comment instance as reply to the current
+    ###
+    new_reply: (body, content_type) =>
+        rv = new Comment bug:@bug, body:body, date:new Date()
+        rv.content_type = content_type ? rv.content_type
+        rv.in_reply_to = @uuid
+        rv.parent = this
+        # we can push here as it is date sorted
+        @children.push(rv)
+        rv
+    
     ###
     # to map
 
