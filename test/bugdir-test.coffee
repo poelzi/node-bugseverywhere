@@ -167,6 +167,15 @@ I'm a " test body.
 
 
 batch = vows.describe("Bugdir interface").addBatch
+  "basic":
+    "test uuid truncer": ->
+        all = ["343abb", "343aaa","344bbb", "12345", "44445", "44444"]
+        assert.equal(be.truncate_uuid("343aaa", all, 3), "343a")
+        assert.equal(be.truncate_uuid("12345", all, 3), "123")
+        assert.equal(be.truncate_uuid("12345", all, 1), "1")
+        assert.equal(be.truncate_uuid("12345", all, 0), "1")
+        assert.equal(be.truncate_uuid("12345", all, 6), "12345")
+
   "version 1.4":
     topic: () ->
         full = path.resolve 'test/sampledata/.be'

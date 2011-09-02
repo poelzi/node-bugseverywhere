@@ -46,7 +46,44 @@ write_map = (map, newlines=1) ->
         for i in [1..newlines]
             rv.push("")
     return rv.join("\n")
+
+###
+# uuid utlis
+###
+
+
+###
+# truncate uuid to minimum unique length
+
+searches for the uuids in others to generate the shortest
+unique name
+###
+
+truncate_uuid = (uid, others, min_length=3) ->
+    chars = min_length
+    for other in others
+        if uid == other
+            continue
+        i = 1
+        while other[i] == uid[i]
+            i++
+        chars = i > chars and i or chars
+    return uid.substr(0, chars)
+
+
+
+###
+# UUID encapsulation
+
+Represents a UUID that can be stipped 
+###
+
+
+class UUID
+
+
     
+
 ###
 # Storage Class
 
@@ -506,7 +543,9 @@ module.exports = {
     FileStorage,
     Bugdir,
     Bug,
-    Comment
+    Comment,
+    UUID,
+    truncate_uuid
 }
 
 
