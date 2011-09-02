@@ -269,7 +269,25 @@ batch = vows.describe("Bugdir interface").addBatch
                    nc.remove (err, res) ->
                        callback()
                    return
-                    
+
+
+
+        "test 529c290e-b1cf-4800-be7e-68f1ecb9565c":
+            topic: (uuids, bdir) ->
+                callback = this.callback
+                all_bugs = []
+                bdir.bug_from_uuid "529c290e-b1cf-4800-be7e-68f1ecb9565c", true, callback
+                return
+
+            "test comment tree": (err, bug, uuids, bdir) ->
+                assert.equal(bug.comment_root.length, 3)
+                #console.log("comment tree", bug)
+                
+                # test root sort
+                last_date = 0
+                for comment in bug.comment_root
+                    assert.ok(last_date <= comment._date_sort, "last _date_sort is not smaller" + last_date + " " + comment._date_sort)
+                    last_date = comment._date_sort
 ###                    topic: (bug, nc) ->
                         base = path.join(bug.bugdir.storage.path, bug.bugdir.uuid, "bugs", bug.uuid, "comments", nc.uuid)
                         assert.ok(path.existsSync(path.join(base, "values")), "comment values file does not exist:" + base)

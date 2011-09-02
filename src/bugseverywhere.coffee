@@ -197,7 +197,6 @@ class FileStorage
                 , 10)
                 
                 queue.drain = =>
-                    #console.log("rv", rv)
                     callback(null, rv)
 
                 for cc in comments
@@ -320,8 +319,8 @@ class Bug
         if @uuid and @_load_comments
             jobs.comments = (callback) =>
                 @bugdir.storage.read_comments @bugdir.uuid, @, null, (err, comments) =>
-                    #console.log("have read comments", comments)
                     @comments = comments or {}
+                    @update_threads()
                     callback(err, comments)
 
         # run all jobs and fire callback with bug as argument
@@ -336,7 +335,7 @@ class Bug
     ###
     read_comments: (callback) =>
         if @uuid and @bugdir and @bugdir.storage
-            @bugdir.storage.read_comments @bugdir.uuid, @uuid, null, (err, comments) =>
+            @bugdir.storage.read_comments @bugdir.uuid, @, null, (err, comments) =>
                 @comments = comments
                 callback(err, comments)
         else
@@ -350,6 +349,29 @@ class Bug
     new_comment: (body)=>
         return new Comment bug:this, body:body, date:new Date()
 
+
+
+    update_threads: () =>
+        @comment_root = root = []
+        for id, comment of @comments
+            if comment.in_reply_to
+                target = @comments[comment.in_reply_to]
+                if not target
+                    console.log("parent missing for comment:" + comment.uuid)
+                    root.push(comment)
+                else
+                    target.children.push(comment)
+            else
+                root.push(comment)
+        #console.log("updated tree", root)
+        srt = (a,b) ->
+            if a._date_sort == b._date_sort
+                return 0
+            return a._date_sort < b._date_sort and -1 or 1
+        root.sort srt
+        for id, comment of @comments
+            comment.children.sort srt
+
 ###
 # Comment
 
@@ -362,6 +384,7 @@ class Comment
         alt_id:"Alt-id",
         content_type:"Content-type"
         extra_strings:"Extra-strings"
+        in_reply_to: "In-reply-to"
     }
 
 
@@ -373,6 +396,10 @@ class Comment
         @body ?= null
         @content_type ?= "text/plain"
         @date ?= new Date()
+        # loaded from storage
+        @values = {}
+        @children = []
+        @update()
 
     _test_storage: (callback) =>
         if not @bug or not @uuid
@@ -394,7 +421,8 @@ class Comment
         async.parallel [
             (callback) =>
                 @bug.bugdir.storage.read_comment_values @bug.bugdir.uuid, @bug.uuid, @uuid, (err, values) =>
-                    @values = values or {}
+                    @values = values = values or {}
+                    @set_values(values)
                     callback(err, values)
             ,
             (callback) =>
@@ -443,6 +471,19 @@ class Comment
                 rv.Date = @date
         return rv
 
+    set_values: (values) =>
+        for key, value of values
+            nkey = key.replace(/-/g,"_", -1).toLowerCase()
+            @[nkey] = value
+        @update()
+
+    ###
+    # update internal states
+
+    should be called after setting of variables
+    ###
+    update: () =>
+        @_date_sort = new Date(@date).getTime()
 
 module.exports = {
     FileStorage,
